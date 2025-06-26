@@ -3,6 +3,8 @@ import asyncio
 import json
 import requests
 import re
+import time
+import random
 from bs4 import BeautifulSoup
 from mcp.types import Tool, TextContent
 import datetime 
@@ -20,6 +22,12 @@ async def fetch_finn_data(url: str, max_pages: int = 2):
         
         for page in range(max_pages):
             page_url = f"{url}&page={page + 1}" if page > 0 else url
+            
+            # Add rate limiting to be respectful to finn.no
+            if page > 0:
+                delay = random.uniform(2, 4)  # Random delay 2-4 seconds between pages
+                await asyncio.sleep(delay)
+            
             response = requests.get(page_url, headers=headers, timeout=10)
             response.raise_for_status()
             
@@ -110,7 +118,7 @@ def parse_page_cars(soup):
                     # Extract Finn code from URL
                     finn_code_match = re.search(r'/(\d+)/?$', ad_url)
                     if finn_code_match:
-                        car_info['finn_code'] = finn_code_match.group(1)
+                        car_info['finn_code'] = finn_code_match.group(1) # type: ignore
 
             # Additional Info
             additional_info_tag = info_div.find('span', class_='text-caption')
@@ -126,38 +134,38 @@ def parse_page_cars(soup):
                 if year_match:
                     year_str = year_match.group(0)
                     if year_str.isdigit():
-                        car_info['year'] = int(year_str)
-                        car_info['age'] = current_year - car_info['year']
+                        car_info['year'] = int(year_str) # type: ignore
+                        car_info['age'] = current_year - car_info['year'] # type: ignore
                 
                 mileage_match = re.search(r'(\d[\d\s.,]*\s*km)\b', details_text, re.IGNORECASE)
                 if mileage_match:
                     raw_mileage_text = mileage_match.group(1)
                     mileage_str_cleaned = re.sub(r'[^\d]', '', raw_mileage_text.lower().replace('km', ''))
                     if mileage_str_cleaned.isdigit():
-                        car_info['mileage'] = int(mileage_str_cleaned)
+                        car_info['mileage'] = int(mileage_str_cleaned) # type: ignore
 
             # Calculate km_per_year
             if car_info['mileage'] is not None and car_info['age'] is not None:
                 if car_info['age'] > 0:
-                    car_info['km_per_year'] = round(car_info['mileage'] / car_info['age'])
+                    car_info['km_per_year'] = round(car_info['mileage'] / car_info['age']) # type: ignore
                 elif car_info['age'] == 0:
-                    car_info['km_per_year'] = car_info['mileage'] 
+                    car_info['km_per_year'] = car_info['mileage'] # type: ignore
             
             # Price
             price_tag = info_div.select_one('div:nth-of-type(1)')
             if price_tag:
                 price_text = price_tag.get_text(strip=True)
                 if "solgt" in price_text.lower():
-                    car_info['price'] = "Solgt"
+                    car_info['price'] = "Solgt" # type: ignore
                 else:
                     price_digits = re.sub(r'[^\d]', '', price_text)
                     if price_digits:
-                        car_info['price'] = int(price_digits)
+                        car_info['price'] = int(price_digits) # type: ignore
 
         # Only add to list if essential data like name was found
         if car_info.get('name'): 
             successful_car_id_counter += 1
-            car_info['id'] = successful_car_id_counter
+            car_info['id'] = successful_car_id_counter # type: ignore
             parsed_cars_list.append(car_info)
 
     return parsed_cars_list

@@ -1,5 +1,8 @@
 import streamlit as st
 import asyncio
+import urllib.parse
+import time
+import random
 from typing import List, Dict
 from services.data_service import DataService
 from services.ai_service import AIService
@@ -14,6 +17,28 @@ car_display = CarDataDisplay()
 DEFAULT_FINN_URL = "https://www.finn.no/mobility/search/car?location=20007&location=20061&location=20003&location=20002&model=1.813.3074&model=1.813.2000660&price_to=380000&sales_form=1&sort=MILEAGE_ASC&stored-id=80260642&wheel_drive=2&year_from=2019"
 
 
+def is_valid_finn_url(url: str) -> bool:
+    """Validate that URL is from finn.no and properly formatted."""
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+        
+        # Check if it's a finn.no domain
+        if not parsed.netloc.lower() in ['finn.no', 'www.finn.no']:
+            return False
+        
+        # Check if it's using HTTP/HTTPS
+        if parsed.scheme not in ['http', 'https']:
+            return False
+        
+        # Check if it's a car search URL
+        if not parsed.path.startswith('/mobility/'):
+            return False
+            
+        return True
+    except Exception:
+        return False
+
+
 def initialize_session_state():
     """Initialize Streamlit session state variables."""
     if 'raw_car_data_text' not in st.session_state:
@@ -23,6 +48,7 @@ def initialize_session_state():
     if 'current_finn_url' not in st.session_state:
         st.session_state.current_finn_url = DEFAULT_FINN_URL
     if 'finn_urls' not in st.session_state:
+        # Start with default URL, but allow user to delete it completely
         st.session_state.finn_urls = [DEFAULT_FINN_URL]
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -38,25 +64,32 @@ def render_sidebar():
     # URL management section
     st.sidebar.subheader("📋 URL-er")
     
-    # Display existing URLs with delete buttons
-    for i, url in enumerate(st.session_state.finn_urls):
-        col1, col2 = st.sidebar.columns([4, 1])
-        
-        with col1:
-            if url.strip():
-                # Truncate URL for display
-                display_url = url[:50] + "..." if len(url) > 50 else url
-                st.text(f"{i+1}. {display_url}")
-            else:
-                st.text(f"{i+1}. (tom URL)")
-        
-        with col2:
-            if st.button("🗑️", key=f"delete_{i}", help="Slett denne URL-en"):
-                st.session_state.finn_urls.pop(i)
-                # If no URLs left, add a placeholder
-                if not st.session_state.finn_urls:
-                    st.session_state.finn_urls = [""]
-                st.rerun()
+    # Check if there are any URLs to display
+    if not st.session_state.finn_urls:
+        st.sidebar.info("Ingen URL-er lagt til ennå")
+        # Add button to restore default URL
+        if st.sidebar.button("➕ Legg til standard søke-URL", help="Legger til standard Finn.no søk"):
+            st.session_state.finn_urls.append(DEFAULT_FINN_URL)
+            st.sidebar.success("✅ Standard URL lagt til")
+            st.rerun()
+    else:
+        # Display existing URLs with delete buttons
+        for i, url in enumerate(st.session_state.finn_urls):
+            col1, col2 = st.sidebar.columns([4, 1])
+            
+            with col1:
+                if url.strip():
+                    # Truncate URL for display
+                    display_url = url[:50] + "..." if len(url) > 50 else url
+                    st.text(f"{i+1}. {display_url}")
+                else:
+                    st.text(f"{i+1}. (tom URL)")
+            
+            with col2:
+                if st.button("🗑️", key=f"delete_{i}", help="Slett denne URL-en"):
+                    st.session_state.finn_urls.pop(i)
+                    # Don't add empty placeholder - let the list be empty if needed
+                    st.rerun()
     
     # Add new URL section
     st.sidebar.markdown("---")
@@ -65,19 +98,25 @@ def render_sidebar():
     new_url = st.sidebar.text_area(
         "Legg til ny URL:",
         height=100,
-        help="Lim inn URL fra Finn.no bilsøk",
-        placeholder="https://www.finn.no/mobility/search/car?..."
+        help="Lim inn URL fra Finn.no bilsøk (kun finn.no URLer tillatt)",
+        placeholder="https://www.finn.no/mobility/search/car?...",
+        max_chars=1000  # Limit URL length for security
     )
     
     # Add URL button with plus icon
     col1, col2 = st.sidebar.columns([3, 1])
     with col1:
         if st.button("➕ Legg til URL", disabled=not new_url.strip()):
-            if new_url.strip() and new_url.strip() not in st.session_state.finn_urls:
-                st.session_state.finn_urls.append(new_url.strip())
-                st.rerun()
+            if not new_url.strip():
+                st.sidebar.error("URL kan ikke være tom")
+            elif not is_valid_finn_url(new_url.strip()):
+                st.sidebar.error("❌ Kun gyldige Finn.no bil-søk URLer er tillatt")
             elif new_url.strip() in st.session_state.finn_urls:
                 st.sidebar.warning("URL finnes allerede")
+            else:
+                st.session_state.finn_urls.append(new_url.strip())
+                st.sidebar.success("✅ URL lagt til")
+                st.rerun()
     
     st.sidebar.markdown("---")
     
@@ -94,9 +133,15 @@ def render_sidebar():
 
 def fetch_new_data():
     """Fetch new data from all Finn.no URLs and reset analysis state."""
-    # Filter out empty URLs
-    valid_urls = [url for url in st.session_state.finn_urls if url.strip()]
-    
+    # Filter out empty URLs and validate them
+    valid_urls = []
+    for url in st.session_state.finn_urls:
+        if url.strip():
+            if is_valid_finn_url(url.strip()):
+                valid_urls.append(url.strip())
+            else:
+                st.sidebar.error(f"❌ Ugyldig URL: {url[:50]}...")
+
     if not valid_urls:
         st.sidebar.error("❌ Ingen gyldige URL-er å hente fra")
         return
@@ -117,6 +162,11 @@ def fetch_new_data():
         try:
             for i, url in enumerate(valid_urls, 1):
                 st.write(f"Henter fra URL {i}/{total_urls}...")
+                
+                # Additional rate limiting between URL requests
+                if i > 1:
+                    delay = random.uniform(3, 6)  # 3-6 seconds between different URLs
+                    time.sleep(delay)  # Use time.sleep instead of await in sync function
                 
                 # Fetch data from current URL
                 success, error_msg, parsed_cars, raw_json = asyncio.run(

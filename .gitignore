@@ -1,10 +1,55 @@
+# Environment variables (CRITICAL - contains API keys)
 .env
+.env.local
+.env.production
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data files (may contain sensitive scraped data)
+finn_data.json
+data/*.json
+logs/*.log
+
+# IDE and editors
 .DS_Store
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
 # Development environment
 .direnv/
 .envrc
 flake.nix
 flake.lock
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Security
+*.pem
+*.key
+*.crt
+*.csr
