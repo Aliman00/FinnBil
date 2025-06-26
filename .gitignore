@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+# Development environment
+.direnv/
+.envrc
+flake.nix
+flake.lock

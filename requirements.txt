@@ -1,0 +1,22 @@
+# Core web framework
+streamlit>=1.28.0
+
+# HTTP requests and web scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Data processing
+pandas>=2.0.0
+
+# AI/LLM integration
+openai>=1.0.0
+
+# Environment variables
+python-dotenv>=1.0.0
+
+# MCP (Model Context Protocol) - for webscraper
+mcp>=0.1.0
+
+# Additional utilities
+typing-extensions>=4.0.0

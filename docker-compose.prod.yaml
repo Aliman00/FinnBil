@@ -1,0 +1,12 @@
+# For Render.com deployment - simpler version without local dev dependencies
+version: '3.8'
+
+services:
+  finnbil-app:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      # Environment variables should be set in Render.com dashboard
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+    restart: unless-stopped

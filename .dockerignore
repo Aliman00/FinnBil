@@ -1,0 +1,64 @@
+# Docker
+.dockerignore
+Dockerfile*
+docker-compose*
+.docker
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.venv-flake/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+.pytest_cache/
+
+# Development environment
+.direnv/
+.envrc
+flake.nix
+flake.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data files (optional - remove if you want to include sample data)
+finn_data.json
+
+# Documentation
+README.md
+*.md
+
+# Testing
+tests/
+test_*

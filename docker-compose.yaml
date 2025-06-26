@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  finnbil-app:
+    build: .
+    container_name: finnbil-analyzer
+    ports:
+      - "8501:8501"
+    environment:
+      # For local development, use .env file
+      # For Render.com, these will be set in the dashboard
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - AI_MODEL=${AI_MODEL:-deepseek/deepseek-chat-v3-0324:free}
+      - AI_BASE_URL=${AI_BASE_URL:-https://openrouter.ai/api/v1}
+    # Only use env_file for local development
+    env_file:
+      - .env
+    volumes:
+      # Mount data directory for persistent storage of finn_data.json
+      - ./data:/app/data
+      # Optional: mount logs directory
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - finnbil-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  finnbil-network:
+    driver: bridge
+
+volumes:
+  finnbil-data:
+    driver: local
