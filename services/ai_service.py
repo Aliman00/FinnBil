@@ -5,6 +5,7 @@ import re
 from typing import List, Dict, Optional
 from openai import OpenAI
 # from services.car_tools import CarTools
+from services.simple_car_analyzer import car_analyzer
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,43 +21,143 @@ class AIService:
             api_key=os.getenv("OPENROUTER_API_KEY")
         )
         # self.car_tools = CarTools()
+        # Use simple car analyzer
+        self.car_analyzer = car_analyzer
         self.system_message = {
             "role": "system",
             "content": (
-                "Du er en ekspert bilanalytiker. Analyser bildata og gi anbefalinger på norsk. "
-                "Presenter informasjon med tydelig, velstrukturert markdown. "
-                "Når du anbefaler biler, nevn deres URL så kan jeg hente detaljert info. "
-                "Svar direkte med analysen uten innledende fraser eller gjentagelser av data."
+                "Du er en senior bilanalytiker og kjøpsrådgiver med 15+ års erfaring fra norsk bilbransje. "
+                "Du har tilgang til avansert verdifall-analyse basert på SmartePenger.no industristandarder og historiske RAV4 nybilpriser (2019-2024). "
+                "\nVIKTIG - BRUKTBILMARKED ANALYSE:"
+                "• Alle biler på Finn.no var opprinnelig kjøpt nye (bruk SmartePenger 'ny bil' verdifall)"
+                "• HØYERE verdifall enn forventet = BEDRE KJØP (bil er billigere enn den burde være)"
+                "• LAVERE verdifall enn forventet = DÅRLIGERE KJØP (bil er dyrere enn den burde være)"
+                "• Eksempel: 50% faktisk vs 40% forventet = +10% høyere verdifall = BILLIGERE = BRA"
+                "• Eksempel: 30% faktisk vs 40% forventet = -10% lavere verdifall = DYRERE = DÅRLIG"
+                "• LAVERE kilometerstand = BEDRE KJØP (mindre slitasje)"
+                "• HØYERE kilometerstand = DÅRLIGERE KJØP (mer slitasje)"
+                "• Forventet verdifall: 20% år 1, 14% år 2, 13% år 3, osv."
+                "• VIKTIG: Totalkarakter kombinerer pris (60%) og kjørelengde (40%)"
+                "• Biler med F i kjørelengde (>25k km/år) kan MAKS få C totalkarakter"
+                "• Biler med D i kjørelengde (20-25k km/år) kan MAKS få B totalkarakter"
+                "• Kun biler med A-C kjørelengde kan få A totalkarakter"
+                "\nDin specialitet:"
+                "• Analysere bruktbilmarkedet med SmartePenger 'ny bil' verdifallsmodell (alle biler startet som nye)"
+                "• Finne underprisede biler: Høyere verdifall enn SmartePenger-forventet (20% år 1, 14% år 2, osv.)"
+                "• Prioritere lav kilometerstand: Under 11k km/år = Utmerket, 11-15k = Bra, 15-20k = Greit, over 20k = Dårlig"
+                "• Karaktersetting (A-F) der totalkarakter vekter pris (60%) og kjørelengde (40%)"
+                "• A-karakter kun for biler med både god pris OG akseptabel kjørelengde"
+                "• Ekstrem kjørelengde (>25k km/år) begrenser totalkarakter til maks C"
+                "• Identifisere overprisede biler (lavere verdifall enn forventet) vs underprisede (høyere verdifall)"
+                "• Gi spesifikke kjøps/unngå-anbefalinger der A/B = kjøp, D/F = unngå"
+                "• Verdi-score analyse (0-100) hvor høy score = god kjøpsmulighet"
+                "\nSkrivestil:"
+                "• Forklar tydelig at høyere verdifall = bedre pris for kjøper"
+                "• Ranger anbefalinger basert på verdiscore der høy score = god deal"
+                "• Gi KONKRETE grunner med 'høyere/lavere verdifall enn forventet = billigere/dyrere'"
+                "• Inkluder alltid Finn.no URL for anbefalte biler"
+                "\nSvar KUN på norsk og følg promptstrukturen nøyaktig."
             )
         }
     
     def create_initial_analysis_prompt(self, parsed_cars_list: List[Dict]) -> str:
-        """Create the initial analysis prompt."""
-        return f"""Analyser de oppgitte bildataene og presenter dine funn.
+        """Create the initial analysis prompt with simple car analysis."""
+        
+        # Get simple analysis for all cars
+        analysis_summary = self.car_analyzer.analyze_multiple_cars(parsed_cars_list)
+        
+        # Prepare enhanced data with simple analysis
+        enhanced_analysis = ""
+        if analysis_summary and analysis_summary.get('all_analyses'):
+            enhanced_analysis = "\n\n📊 BILANALYSE (SmartePenger.no standarder):\n"
+            
+            for analysis in analysis_summary['all_analyses'][:10]:  # Top 10 for brevity
+                car = analysis['car_info']
+                price = analysis['price_analysis']
+                mileage = analysis['mileage_analysis']
+                
+                enhanced_analysis += f"""
+                🚗 {car['name']} ({car['year']}) - Totalkarakter: {analysis['grade']} (Pris: {price['grade']}, Km: {mileage['grade']})
+                • Markedspris: {car['current_price']:,} kr
+                • Nybilpris: {price['original_price']:,} kr
+                • Faktisk verdifall: {price['actual_depreciation_percent']:.1f}%
+                • Forventet verdifall: {price['expected_depreciation_percent']:.1f}%
+                • Verdifallssammenligning: {price['depreciation_difference']:+.1f}% ({'BILLIGERE enn forventet (bra for kjøper)' if price['depreciation_difference'] > 0 else 'DYRERE enn forventet (dårlig for kjøper)'})
+                • Kjørelengde: {car['km_per_year']:,} km/år ({mileage['assessment']})
+                • Anbefaling: {analysis['recommendation']}
+                """
+        
+        base_prompt = f"""Du er en senior bilanalytiker med 15+ års erfaring fra bilbransjen. Analyser disse RAV4-ene som en profesjonell kjøpsrådgiver.
 
-        Strukturerte bildata:
-        {json.dumps(parsed_cars_list, ensure_ascii=False, indent=2)}
+            STRUKTURERTE BILDATA:
+            {json.dumps(parsed_cars_list, ensure_ascii=False, indent=2)}
 
-        Gi følgende innsikter i et klart, strukturert format:
-        1. Gjennomsnittspris på biler (ekskludert 'Solgt')
-        2. Gjennomsnittlig kilometerstand
-        3. Gjennomsnittlig alder på biler
-        4. Gjennomsnittlig km per år
-        5. Antall biler merket som 'Solgt'
+            {enhanced_analysis}
 
-        Etter å ha presentert disse innsiktene, identifiser 3-5 biler som ser lovende ut for kjøp basert på:
-        - God verdi (vurdering av pris vs. alder/kilometerstand)
-        - Lav km/år (biler med mindre enn 15 000 km/år regnes som lav kjørelengde)
-        - Generell appell basert på kunnskap om bilmodeller
+            📈 ANALYSESAMMENDRAG (SmartePenger.no standarder):
+            • Analysert: {analysis_summary.get('total_cars', 0)} biler
+            • Karakterfordeling: A:{analysis_summary.get('grade_distribution', {}).get('A', 0)} B:{analysis_summary.get('grade_distribution', {}).get('B', 0)} C:{analysis_summary.get('grade_distribution', {}).get('C', 0)} D:{analysis_summary.get('grade_distribution', {}).get('D', 0)} F:{analysis_summary.get('grade_distribution', {}).get('F', 0)}
+            • Anbefalte biler (A-B): {analysis_summary.get('good_deals', 0)}/{analysis_summary.get('total_cars', 0)}
 
-        For hver lovende bil du identifiserer, nevn URL-en så jeg kan hente detaljert informasjon.
+            ## 🎯 TOPP 3 KJØPSANBEFALINGER
 
-        Begrunn valgene dine, og gi anbefalinger basert på bilens tilstand, utstyr og pris, samt eventuelle heftelser.
-        Gi også anbefalinger for hvilke biler som kan være gode kjøp basert på deres spesifikasjoner og tilstand.
-        Skriv på norsk, bruk klare overskrifter og punktlister der det er relevant.
+            Ranger de 3 BESTE bilene basert på SmartePenger verdifallsanalyse. HUSK: Høyere faktisk verdifall enn forventet = billigere bil = bedre kjøp!
 
-        VIKTIG: Bruk dine bilkunnskaper for å vurdere hvilke biler som er best egnet for kjøp.
-        VIKTIG: Svaret ditt skal kun bestå av de forespurte innsiktene og anbefalingene."""
+            **[RANG #X] - [Bilnavn og år] - Karakter: [A-F]**
+            - 💰 **Pris vs. industri**: [Sammenlign med SmartePenger forventet verdifall]
+            - 📉 **Kjøpsanalyse**: [VIKTIG: Hvis faktisk verdifall > forventet = billigere = bra. Hvis faktisk < forventet = dyrere = dårlig]
+            - 🚗 **Kilometerstand**: [Under 11k km/år = Utmerket, 11-15k = Bra, 15-20k = Greit, over 20k = Dårlig]
+            - ⚡ **Kjøpsargument**: [Hovedgrunnen til å kjøpe DENNE bilen]
+            - ⚠️ **Risikofaktorer**: [Potensielle problemer/bekymringer]
+            - 🔗 **URL**: [Finn.no lenke]
+            - 🏆 **Kjøpsanbefaling**: [Basert på SmartePenger-analyse fra kjøpers perspektiv]
+
+            EKSEMPEL PÅ RIKTIG TOLKNING:
+            - 50% faktisk vs 40% forventet = +10% høyere verdifall = billigere bil = BRA for kjøper
+            - 30% faktisk vs 40% forventet = -10% lavere verdifall = dyrere bil = DÅRLIG for kjøper
+
+            ## 📊 MARKEDSANALYSE
+
+            ### Prissegmenter:
+            - **Budget (under 300k)**: [Antall biler og verdifallsanalyse]
+            - **Mellomklasse (300-450k)**: [Antall biler og vurdering]  
+            - **Premium (over 450k)**: [Antall biler og vurdering]
+
+            ### Avvik fra forventet verdifall:
+            - **Overprised** (høyere enn forventet): [Liste med begrunnelse]
+            - **Underpriced** (lavere enn forventet): [Liste med begrunnelse]
+
+            ### Solgte biler-analyse:
+            [Analyser soldier biler: pris, km-stand, årsaker til salg]
+
+            ## ⚠️ BILER Å UNNGÅ
+
+            List 2-3 biler du IKKE ville anbefalt med konkrete grunner:
+            - **[Bilnavn]**: [Spesifikk grunn - høy pris, høy km-stand, dårlig verdifall etc.]
+
+            ## 📊 MARKED-INSIGHTS
+
+            ### Generelle trender:
+            - Hvilke årsmodeller gir best value?
+            - Optimal km-stand for beste pris/verdi-forhold?
+            - Sesongeffekter eller markedstrender?
+
+            ### Forhandlingstips:
+            - Hvilke biler har vært lenge til salgs? (potensial for prutearr)
+            - Prisargumenter basert på verdifall-data
+
+            ## 🎯 KONKLUSJON
+
+            **TL;DR for travle kjøpere:**
+            1. **Best buy**: [Bil + pris + hovedgrunn]
+            2. **Best value**: [Bil + pris + hovedgrunn]  
+            3. **Avoid**: [Bil + hovedgrunn]
+
+            **Generell markedsvurdering**: [Er det kjøpers eller selgers marked?]
+
+            KRITISK: Vær spesifikk, bruk tallene fra verdifall-analysen, og gi KONKRETE kjøpsråd med URL-er. Ingen generelle fraser - kun actionable insights!"""
+        
+        return base_prompt
     
     async def get_ai_response_with_tools(self, messages: List[Dict]) -> str:
         """Get AI response and automatically enhance with detailed car info."""

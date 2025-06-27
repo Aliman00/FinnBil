@@ -6,12 +6,8 @@ import random
 from typing import List, Dict
 from services.data_service import DataService
 from services.ai_service import AIService
+from services.price_analysis_service import PriceAnalysisService
 from ui.car_display import CarDataDisplay
-
-# Initialize services
-data_service = DataService()
-ai_service = AIService()
-car_display = CarDataDisplay()
 
 # Configuration
 DEFAULT_FINN_URL = "https://www.finn.no/mobility/search/car?location=20007&location=20061&location=20003&location=20002&model=1.813.3074&model=1.813.2000660&price_to=380000&sales_form=1&sort=MILEAGE_ASC&stored-id=80260642&wheel_drive=2&year_from=2019"
@@ -54,6 +50,14 @@ def initialize_session_state():
         st.session_state.messages = []
     if 'initial_analysis_done' not in st.session_state:
         st.session_state.initial_analysis_done = False
+    
+    # Initialize services once and cache in session state
+    if 'data_service' not in st.session_state:
+        st.session_state.data_service = DataService()
+    if 'ai_service' not in st.session_state:
+        st.session_state.ai_service = AIService()
+    if 'car_display' not in st.session_state:
+        st.session_state.car_display = CarDataDisplay()
 
 
 def render_sidebar():
@@ -129,6 +133,59 @@ def render_sidebar():
         valid_url_count = len([url for url in st.session_state.finn_urls if url.strip()])
         st.sidebar.text("")
         st.sidebar.success(f"✅ {len(st.session_state.parsed_cars_list)} biler lastet fra {valid_url_count} URL-er")
+    
+    # Cache status and management
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🗄️ Cache Status")
+    
+    try:
+        from services.price_analysis_service import PriceAnalysisService
+        
+        # Check if cache exists
+        if hasattr(PriceAnalysisService, '_instance') and PriceAnalysisService._instance is not None:
+            instance = PriceAnalysisService.get_instance()
+            record_count = len(instance.rav4_data) if instance.rav4_data is not None else 0
+            st.sidebar.info(f"📊 {record_count} RAV4 priser cached")
+            
+            # Cache reset button
+            if st.sidebar.button("🔄 Reset price cache", help="Laster RAV4 prisdata på nytt"):
+                PriceAnalysisService.reset_cache()
+                st.sidebar.success("✅ Cache tilbakestilt")
+                st.rerun()
+        else:
+            st.sidebar.info("📊 Ingen prisdata cached ennå")
+            
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Cache status ikke tilgjengelig: {str(e)[:50]}...")
+    
+    # Cache status and management section
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🗄️ Cache Status")
+    
+    # Get cache status from PriceAnalysisService
+    price_service = PriceAnalysisService.get_instance() # type: ignore
+    
+    if price_service.rav4_data is not None and len(price_service.rav4_data) > 0:
+        st.sidebar.success(f"✅ RAV4 data: {len(price_service.rav4_data)} records cached")
+    else:
+        st.sidebar.warning("⚠️ RAV4 price data not loaded")
+    
+    # Reset cache button
+    if st.sidebar.button("🗑️ Reset Cache", help="Tilbakestill alle cachede data og last dem på nytt"):
+        try:
+            # Clear Streamlit cache
+            st.cache_data.clear()
+            
+            # Reset PriceAnalysisService singleton
+            PriceAnalysisService.reset_cache() # type: ignore
+            
+            # Reinitialize AI service with fresh cache
+            st.session_state.ai_service = AIService()
+            
+            st.sidebar.success("✅ Cache tilbakestilt!")
+            st.rerun()
+        except Exception as e:
+            st.sidebar.error(f"❌ Feil ved tilbakestilling: {e}")
 
 
 def fetch_new_data():
@@ -170,7 +227,7 @@ def fetch_new_data():
                 
                 # Fetch data from current URL
                 success, error_msg, parsed_cars, raw_json = asyncio.run(
-                    data_service.fetch_and_parse_cars(url)
+                    st.session_state.data_service.fetch_and_parse_cars(url)
                 )
                 
                 if success:
@@ -185,7 +242,7 @@ def fetch_new_data():
                 st.session_state.raw_car_data_text = "\n\n".join(all_raw_data)
                 
                 # Save to file
-                data_service.save_data_to_file(all_parsed_cars)
+                st.session_state.data_service.save_data_to_file(all_parsed_cars)
                 
                 st.write(f"✅ Totalt hentet {len(all_parsed_cars)} biler")
                 status.update(label="Data hentet!", state="complete", expanded=False)
@@ -209,20 +266,20 @@ def render_car_data():
     st.header("📊 Bildata 🚗")
     
     # Display car table
-    df = car_display.prepare_dataframe(st.session_state.parsed_cars_list)
+    df = st.session_state.car_display.prepare_dataframe(st.session_state.parsed_cars_list)
     
     if not df.empty:        
         # Show data table with custom column order
         # st.subheader("🚗 Biltabell")
         
         # ✅ NOW USING get_display_columns!
-        display_columns = car_display.get_display_columns(df)
+        display_columns = st.session_state.car_display.get_display_columns(df)
         
         st.data_editor(
             df[display_columns],  # ← This will show columns in correct order
             use_container_width=True,
             hide_index=True,
-            column_config=car_display.get_column_config(),
+            column_config=st.session_state.car_display.get_column_config(),
             disabled=True,
             height=400
         )
@@ -232,10 +289,10 @@ def render_car_data():
         # st.write(f"**Debug:** Viser kolonner: {', '.join(display_columns)}")
 
         # Show statistics
-        stats = data_service.calculate_statistics(st.session_state.parsed_cars_list)
+        stats = st.session_state.data_service.calculate_statistics(st.session_state.parsed_cars_list)
         
         # Display improved statistics
-        car_display.display_statistics(stats)
+        st.session_state.car_display.display_statistics(stats)
         st.markdown("---")
         
     else:
@@ -266,11 +323,11 @@ def start_ai_analysis():
         return
 
     # Reset chat state
-    st.session_state.messages = [ai_service.system_message]
+    st.session_state.messages = [st.session_state.ai_service.system_message]
     st.session_state.initial_analysis_done = False
 
     # Create and add initial prompt
-    initial_prompt = ai_service.create_initial_analysis_prompt(st.session_state.parsed_cars_list)
+    initial_prompt = st.session_state.ai_service.create_initial_analysis_prompt(st.session_state.parsed_cars_list)
     st.session_state.messages.append({
         "role": "user",
         "content": initial_prompt,
@@ -280,7 +337,7 @@ def start_ai_analysis():
     with st.spinner("🔍 AI utfører dybdeanalyse med ekstra bildata... Dette kan ta litt tid..."):
         try:
             # Get AI response with automatic tool enhancement
-            ai_response = asyncio.run(ai_service.get_ai_response_with_tools(
+            ai_response = asyncio.run(st.session_state.ai_service.get_ai_response_with_tools(
                 [{"role": m["role"], "content": m["content"]} for m in st.session_state.messages]
             ))
             
@@ -320,7 +377,7 @@ def render_chat_interface():
         with st.chat_message("assistant"):
             with st.spinner("AI svarer..."):
                 try:
-                    ai_response = asyncio.run(ai_service.get_ai_response_with_tools(
+                    ai_response = asyncio.run(st.session_state.ai_service.get_ai_response_with_tools(
                         [{"role": m["role"], "content": m["content"]} 
                          for m in st.session_state.messages if not m.get("is_hidden_prompt")]
                     ))
