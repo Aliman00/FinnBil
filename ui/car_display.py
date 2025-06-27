@@ -11,16 +11,12 @@ class CarDataDisplay:
         """Prepare and format car data for display."""
         df_cars = pd.DataFrame(cars_list)
         
-        # Set index if available
-        index_column_to_use = None
+        # Ensure ID column is available for display
         if 'original_chunk_order' in df_cars.columns:
-            index_column_to_use = 'original_chunk_order'
-        elif 'id' in df_cars.columns:
-            index_column_to_use = 'id'
-
-        if index_column_to_use:
-            df_cars = df_cars.set_index(index_column_to_use)
-            df_cars.index.name = "ID"
+            df_cars['id'] = df_cars['original_chunk_order']
+        elif 'id' not in df_cars.columns:
+            # Create ID column if it doesn't exist
+            df_cars['id'] = range(1, len(df_cars) + 1)
 
         if 'price' in df_cars.columns:
             df_cars['price_display'] = df_cars['price'].astype(str).replace('nan', 'N/A')
@@ -33,6 +29,7 @@ class CarDataDisplay:
     def get_column_config() -> Dict:
         """Get column configuration for data display."""
         return {
+            "id": st.column_config.NumberColumn("ID", format="%d", width="small"),
             "name": st.column_config.TextColumn("Model", width="large"),
             "image_url": st.column_config.ImageColumn("Bilde", width="small"),
             "link": st.column_config.LinkColumn("Link", display_text="🔗", width="small"),
@@ -46,7 +43,7 @@ class CarDataDisplay:
     @staticmethod
     def get_display_columns(df: pd.DataFrame) -> List[str]:
         """Get columns to display in the data editor."""
-        desired_columns = ["name", "year", "mileage", "price_display", "age", "km_per_year", "link", "image_url"]
+        desired_columns = ["id", "name", "year", "mileage", "price_display", "age", "km_per_year", "link", "image_url"]
         return [col for col in desired_columns if col in df.columns]
     
     @staticmethod

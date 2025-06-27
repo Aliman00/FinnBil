@@ -11,14 +11,14 @@ import streamlit as st
 class SimpleCarAnalyzer:
     """Simplified car analysis using SmartePenger.no depreciation standards."""
     
-    # SmartePenger.no depreciation rates (new car)
-    DEPRECIATION_RATES = {
-        1: 0.20,  # 20% first year
-        2: 0.14,  # 14% second year  
-        3: 0.13,  # 13% third year
-        4: 0.12,  # 12% fourth year
-        5: 0.11,  # 11% fifth year
-        6: 0.10   # 10% sixth year and onwards
+    # SmartePenger.no CUMULATIVE depreciation rates (total depreciation from new)
+    CUMULATIVE_DEPRECIATION = {
+        1: 0.20,  # 20% total after 1 year
+        2: 0.31,  # 31% total after 2 years  
+        3: 0.40,  # 40% total after 3 years
+        4: 0.47,  # 47% total after 4 years
+        5: 0.53,  # 53% total after 5 years
+        6: 0.57   # 57% total after 6+ years
     }
     
     def __init__(self):
@@ -167,20 +167,17 @@ class SimpleCarAnalyzer:
         return avg_price
     
     def calculate_expected_value(self, original_price: float, age_years: int) -> Dict:
-        """Calculate expected current value using SmartePenger depreciation."""
-        current_value = original_price
-        total_depreciation = 0
+        """Calculate expected current value using SmartePenger CUMULATIVE depreciation."""
+        # Use direct cumulative depreciation rates (much simpler and correct!)
+        cumulative_rate = self.CUMULATIVE_DEPRECIATION.get(age_years, self.CUMULATIVE_DEPRECIATION[6])
         
-        for year in range(1, age_years + 1):
-            rate = self.DEPRECIATION_RATES.get(year, self.DEPRECIATION_RATES[6])
-            year_depreciation = current_value * rate
-            current_value -= year_depreciation
-            total_depreciation += year_depreciation
+        total_depreciation = original_price * cumulative_rate
+        current_value = original_price - total_depreciation
         
         return {
             'expected_value': current_value,
             'total_depreciation_amount': total_depreciation,
-            'total_depreciation_percent': (total_depreciation / original_price) * 100
+            'total_depreciation_percent': cumulative_rate * 100
         }
     
     def analyze_car(self, car_data: Dict) -> Dict:
@@ -294,27 +291,32 @@ class SimpleCarAnalyzer:
                 recommendation = '🟡 VURDER - Utmerket kjørelengde men dyr pris'
             else:  # F
                 recommendation = '🟠 FORSIKTIG - Utmerket kjørelengde men overpriset'
-        elif grade == 'C':
-            if primary_grade in ['A', 'B']:
-                recommendation = '� ANBEFALT - Lav kjørelengde kompenserer for pris'
+        elif primary_grade == 'B':  # Good mileage (12-18k km/år)
+            if price_grade in ['A', 'B']:
+                recommendation = '🟢 ANBEFALT - God kjørelengde og attraktiv pris'
+            elif price_grade == 'C':
+                recommendation = '🟢 ANBEFALT - God kombinasjon'
+            elif price_grade == 'D':
+                recommendation = '🟡 VURDER - God kjørelengde men dyr'
+            else:  # F
+                recommendation = '🟠 FORSIKTIG - God kjørelengde men overpriset'
+        elif primary_grade == 'C':
+            if price_grade in ['A', 'B']:
+                recommendation = '🟡 VURDER - Høy kjørelengde men god pris'
+            elif price_grade == 'C':
+                recommendation = '🟡 VURDER - Gjennomsnittlig bil'
+            else:  # D eller F
+                recommendation = '🟠 FORSIKTIG - Høy kjørelengde og dyr pris'
+        elif primary_grade == 'D':
+            if price_grade in ['A', 'B']:
+                recommendation = '🟠 FORSIKTIG - Høy kjørelengde men kompenserende pris'
             else:
-                recommendation = '�🟡 VURDER - Gjennomsnittlig bil'
-        elif grade == 'D':
-            if primary_grade == 'A' and price_grade in ['C', 'D']:  # Utmerket km, ok pris
-                recommendation = '🟡 VURDER - Utmerket kjørelengde kompenserer for pris'
-            elif primary_grade == 'A':  # Utmerket km, dårlig pris
-                recommendation = '🟠 FORSIKTIG - Utmerket kjørelengde men høy pris'
-            elif primary_grade in ['B', 'C']:
-                recommendation = '� FORSIKTIG - Under gjennomsnitt'
+                recommendation = '🔴 UNNGÅ - Høy kjørelengde'
+        else:  # primary_grade == 'F' - Very high mileage (over 30k km/år)
+            if price_grade in ['A', 'B']:
+                recommendation = '🔴 UNNGÅ - Svært høy kjørelengde selv med god pris'
             else:
-                recommendation = '🔴 UNNGÅ'
-        else:  # Grade F
-            if primary_grade == 'A' and price_grade == 'F':  # Kun hvis prisen er problemet
-                recommendation = '🟠 FORSIKTIG - Utmerket kjørelengde men overpriset'
-            elif primary_grade in ['A', 'B']:
-                recommendation = '🔴 UNNGÅ - Høy pris overskygger god kjørelengde'
-            else:
-                recommendation = '🔴 UNNGÅ'
+                recommendation = '🔴 UNNGÅ - Svært høy kjørelengde og dårlig pris'
         
         print(f"Priskarakter: {price_grade} - {price_assessment}")
         print(f"Kjørelengde: {primary_grade} - {mileage_assessment}")
@@ -390,6 +392,28 @@ class SimpleCarAnalyzer:
             'worst_deal': analyses[-1] if analyses else None,
             'all_analyses': analyses
         }
+    
+    def analyze_car_value(self, name_or_data, year=None, price=None, mileage=None) -> Dict:
+        """
+        Backward compatibility method for analyze_car_value.
+        Supports both old calling style (name, year, price, mileage) and new style (dict).
+        """
+        if isinstance(name_or_data, dict):
+            # New style: dictionary parameter
+            return self.analyze_car(name_or_data)
+        else:
+            # Old style: individual parameters - calculate km_per_year
+            age_years = max(2024 - year, 1) if year else 1  # Avoid division by zero
+            km_per_year = mileage / age_years if mileage and age_years > 0 else 15000
+            
+            car_data = {
+                'name': name_or_data,
+                'year': year,
+                'price': price,
+                'mileage': mileage,
+                'km_per_year': km_per_year
+            }
+            return self.analyze_car(car_data)
 
 
 # Singleton instance for easy use

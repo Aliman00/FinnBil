@@ -134,58 +134,58 @@ def render_sidebar():
         st.sidebar.text("")
         st.sidebar.success(f"✅ {len(st.session_state.parsed_cars_list)} biler lastet fra {valid_url_count} URL-er")
     
-    # Cache status and management
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🗄️ Cache Status")
+    # # Cache status and management
+    # st.sidebar.markdown("---")
+    # st.sidebar.subheader("🗄️ Cache Status")
     
-    try:
-        from services.price_analysis_service import PriceAnalysisService
+    # try:
+    #     from services.price_analysis_service import PriceAnalysisService
         
-        # Check if cache exists
-        if hasattr(PriceAnalysisService, '_instance') and PriceAnalysisService._instance is not None:
-            instance = PriceAnalysisService.get_instance()
-            record_count = len(instance.rav4_data) if instance.rav4_data is not None else 0
-            st.sidebar.info(f"📊 {record_count} RAV4 priser cached")
+    #     # Check if cache exists
+    #     if hasattr(PriceAnalysisService, '_instance') and PriceAnalysisService._instance is not None:
+    #         instance = PriceAnalysisService.get_instance()
+    #         record_count = len(instance.rav4_data) if instance.rav4_data is not None else 0
+    #         st.sidebar.info(f"📊 {record_count} RAV4 priser cached")
             
-            # Cache reset button
-            if st.sidebar.button("🔄 Reset price cache", help="Laster RAV4 prisdata på nytt"):
-                PriceAnalysisService.reset_cache()
-                st.sidebar.success("✅ Cache tilbakestilt")
-                st.rerun()
-        else:
-            st.sidebar.info("📊 Ingen prisdata cached ennå")
+    #         # Cache reset button
+    #         if st.sidebar.button("🔄 Reset price cache", help="Laster RAV4 prisdata på nytt"):
+    #             PriceAnalysisService.reset_cache()
+    #             st.sidebar.success("✅ Cache tilbakestilt")
+    #             st.rerun()
+    #     else:
+    #         st.sidebar.info("📊 Ingen prisdata cached ennå")
             
-    except Exception as e:
-        st.sidebar.warning(f"⚠️ Cache status ikke tilgjengelig: {str(e)[:50]}...")
+    # except Exception as e:
+    #     st.sidebar.warning(f"⚠️ Cache status ikke tilgjengelig: {str(e)[:50]}...")
     
-    # Cache status and management section
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🗄️ Cache Status")
+    # # Cache status and management section
+    # st.sidebar.markdown("---")
+    # st.sidebar.subheader("🗄️ Cache Status")
     
-    # Get cache status from PriceAnalysisService
-    price_service = PriceAnalysisService.get_instance() # type: ignore
+    # # Get cache status from PriceAnalysisService
+    # price_service = PriceAnalysisService.get_instance() # type: ignore
     
-    if price_service.rav4_data is not None and len(price_service.rav4_data) > 0:
-        st.sidebar.success(f"✅ RAV4 data: {len(price_service.rav4_data)} records cached")
-    else:
-        st.sidebar.warning("⚠️ RAV4 price data not loaded")
+    # if price_service.rav4_data is not None and len(price_service.rav4_data) > 0:
+    #     st.sidebar.success(f"✅ RAV4 data: {len(price_service.rav4_data)} records cached")
+    # else:
+    #     st.sidebar.warning("⚠️ RAV4 price data not loaded")
     
-    # Reset cache button
-    if st.sidebar.button("🗑️ Reset Cache", help="Tilbakestill alle cachede data og last dem på nytt"):
-        try:
-            # Clear Streamlit cache
-            st.cache_data.clear()
+    # # Reset cache button
+    # if st.sidebar.button("🗑️ Reset Cache", help="Tilbakestill alle cachede data og last dem på nytt"):
+    #     try:
+    #         # Clear Streamlit cache
+    #         st.cache_data.clear()
             
-            # Reset PriceAnalysisService singleton
-            PriceAnalysisService.reset_cache() # type: ignore
+    #         # Reset PriceAnalysisService singleton
+    #         PriceAnalysisService.reset_cache() # type: ignore
             
-            # Reinitialize AI service with fresh cache
-            st.session_state.ai_service = AIService()
+    #         # Reinitialize AI service with fresh cache
+    #         st.session_state.ai_service = AIService()
             
-            st.sidebar.success("✅ Cache tilbakestilt!")
-            st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"❌ Feil ved tilbakestilling: {e}")
+    #         st.sidebar.success("✅ Cache tilbakestilt!")
+    #         st.rerun()
+    #     except Exception as e:
+    #         st.sidebar.error(f"❌ Feil ved tilbakestilling: {e}")
 
 
 def fetch_new_data():

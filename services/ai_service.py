@@ -99,11 +99,11 @@ class AIService:
             • Karakterfordeling: A:{analysis_summary.get('grade_distribution', {}).get('A', 0)} B:{analysis_summary.get('grade_distribution', {}).get('B', 0)} C:{analysis_summary.get('grade_distribution', {}).get('C', 0)} D:{analysis_summary.get('grade_distribution', {}).get('D', 0)} F:{analysis_summary.get('grade_distribution', {}).get('F', 0)}
             • Anbefalte biler (A-B): {analysis_summary.get('good_deals', 0)}/{analysis_summary.get('total_cars', 0)}
 
-            ## 🎯 TOPP 3 KJØPSANBEFALINGER
+            ## 🎯 TOPP 5 KJØPSANBEFALINGER
 
-            Ranger de 3 BESTE bilene basert på SmartePenger verdifallsanalyse. HUSK: Høyere faktisk verdifall enn forventet = billigere bil = bedre kjøp!
+            Ranger de 5 BESTE bilene basert på SmartePenger verdifallsanalyse. HUSK: Høyere faktisk verdifall enn forventet = billigere bil = bedre kjøp!
 
-            **[RANG #X] - [Bilnavn og år] - Karakter: [A-F]**
+            **[RANG #X] - [Bilnavn og år] - Karakter: [A-F] - Pris: [] - Kilometerstand: [] - ID: []**
             - 💰 **Pris vs. industri**: [Sammenlign med SmartePenger forventet verdifall]
             - 📉 **Kjøpsanalyse**: [VIKTIG: Hvis faktisk verdifall > forventet = billigere = bra. Hvis faktisk < forventet = dyrere = dårlig]
             - 🚗 **Kilometerstand**: [Under 11k km/år = Utmerket, 11-15k = Bra, 15-20k = Greit, over 20k = Dårlig]
