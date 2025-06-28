@@ -4,7 +4,6 @@ import json
 import re
 from typing import List, Dict, Optional
 from openai import OpenAI
-# from services.car_tools import CarTools
 from services.simple_car_analyzer import car_analyzer
 from dotenv import load_dotenv
 
