@@ -1,40 +1,61 @@
-import os
 import asyncio
 import json
 import requests
 import re
 import time
 import random
+from typing import Optional
 from bs4 import BeautifulSoup
 from mcp.types import Tool, TextContent
 import datetime 
 
+from config.settings import settings
+from utils.logging import logger
+
 
 # This function fetches car data from Finn.no and parses it
-async def fetch_finn_data(url: str, max_pages: int = 2):
+async def fetch_finn_data(url: str, max_pages: Optional[int] = None):
     """Enhanced version of your parse_car_data function"""
+    if max_pages is None:
+        max_pages = settings.scraping.max_pages
+    
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': settings.scraping.user_agent
         }
         
         all_cars = []
+        
+        logger.info(f"Starting to fetch data from {max_pages} pages")
         
         for page in range(max_pages):
             page_url = f"{url}&page={page + 1}" if page > 0 else url
             
             # Add rate limiting to be respectful to finn.no
             if page > 0:
-                delay = random.uniform(2, 4)  # Random delay 2-4 seconds between pages
+                delay = random.uniform(
+                    settings.scraping.rate_limit_delay_min, 
+                    settings.scraping.rate_limit_delay_max
+                )
+                logger.debug(f"Rate limiting: waiting {delay:.1f} seconds")
                 await asyncio.sleep(delay)
             
-            response = requests.get(page_url, headers=headers, timeout=10)
+            logger.debug(f"Fetching page {page + 1}/{max_pages}")
+            response = requests.get(
+                page_url, 
+                headers=headers, 
+                timeout=settings.scraping.request_timeout
+            )
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'lxml')
             cars = parse_page_cars(soup)
             all_cars.extend(cars)
             
+            logger.debug(f"Found {len(cars)} cars on page {page + 1}")
+            
+        logger.info(f"Successfully fetched {len(all_cars)} total cars from {max_pages} pages")
+        
         return [TextContent(
             type="text",
             text=json.dumps({
@@ -45,9 +66,11 @@ async def fetch_finn_data(url: str, max_pages: int = 2):
         )]
         
     except Exception as e:
+        error_msg = f"Error fetching finn data: {str(e)}"
+        logger.error(error_msg, exc_info=True)
         return [TextContent(
             type="text", 
-            text=json.dumps({"success": False, "error": str(e)})
+            text=json.dumps({"success": False, "error": error_msg})
         )]
 
 

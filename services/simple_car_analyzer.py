@@ -72,7 +72,7 @@ class SimpleCarAnalyzer:
                                         'Model': model_name,
                                         'Price': price
                                     })
-                                    print(f"Parsed: {current_year} - {model_name} - {price:,} kr")
+                                    # print(f"Parsed: {current_year} - {model_name} - {price:,} kr")
                                 else:
                                     print(f"Invalid price: '{price_str}' for {model_name}")
                         except (ValueError, IndexError, StopIteration) as e:
@@ -82,13 +82,13 @@ class SimpleCarAnalyzer:
             # Convert to DataFrame
             self._rav4_data = pd.DataFrame(parsed_data)
             self._data_loaded = True
-            print(f"Successfully loaded {len(parsed_data)} RAV4 price records from {len(self._rav4_data['Year'].unique())} years")
+            # print(f"Successfully loaded {len(parsed_data)} RAV4 price records from {len(self._rav4_data['Year'].unique())} years")
             
             # Debug: Show sample data
-            if len(parsed_data) > 0:
-                print("\nSample data:")
-                print(self._rav4_data.head())
-                print(f"\nPrice range: {self._rav4_data['Price'].min():,} - {self._rav4_data['Price'].max():,} kr")
+            # if len(parsed_data) > 0:
+            #     print("\nSample data:")
+            #     print(self._rav4_data.head())
+            #     print(f"\nPrice range: {self._rav4_data['Price'].min():,} - {self._rav4_data['Price'].max():,} kr")
             
         except Exception as e:
             print(f"Feil ved lasting av RAV4-data: {e}")
@@ -107,7 +107,7 @@ class SimpleCarAnalyzer:
         
         # Debug: Print available years
         available_years = sorted(self._rav4_data['Year'].unique())
-        print(f"Tilgjengelige år i data: {available_years}")
+        # print(f"Tilgjengelige år i data: {available_years}")
         
         # Find matches for the specific year
         matches = self._rav4_data[self._rav4_data['Year'] == car_year]
@@ -118,11 +118,11 @@ class SimpleCarAnalyzer:
                 alt_year = car_year + offset
                 matches = self._rav4_data[self._rav4_data['Year'] == alt_year]
                 if not matches.empty:
-                    print(f"Bruker data fra {alt_year} i stedet for {car_year}")
+                    # print(f"Bruker data fra {alt_year} i stedet for {car_year}")
                     break
         
         if matches.empty:
-            print(f"Ingen match funnet for år {car_year} eller nærliggende år")
+            # print(f"Ingen match funnet for år {car_year} eller nærliggende år")
             return None
         
         # Simple name matching
@@ -130,7 +130,7 @@ class SimpleCarAnalyzer:
         best_match = None
         best_score = 0
         
-        print(f"Søker etter match for: '{car_name}' i {len(matches)} modeller")
+        # print(f"Søker etter match for: '{car_name}' i {len(matches)} modeller")
         
         for _, row in matches.iterrows():
             model_name = str(row['Model']).lower()
@@ -154,16 +154,16 @@ class SimpleCarAnalyzer:
             if score > best_score:
                 best_score = score
                 best_match = row
-                print(f"Ny beste match: '{model_name}' (score: {score})")
+                # print(f"Ny beste match: '{model_name}' (score: {score})")
         
         if best_match is not None:
             price = float(best_match['Price'])
-            print(f"Funnet match: {best_match['Model']} -> {price:,.0f} kr")
+            # print(f"Funnet match: {best_match['Model']} -> {price:,.0f} kr")
             return price
         
         # Fallback to average price for the year
         avg_price = float(matches['Price'].mean())
-        print(f"Bruker gjennomsnittspris for {car_year}: {avg_price:,.0f} kr")
+        # print(f"Bruker gjennomsnittspris for {car_year}: {avg_price:,.0f} kr")
         return avg_price
     
     def calculate_expected_value(self, original_price: float, age_years: int) -> Dict:
@@ -180,6 +180,63 @@ class SimpleCarAnalyzer:
             'total_depreciation_percent': cumulative_rate * 100
         }
     
+    def extract_equipment_level(self, car_data: Dict) -> Dict:
+        """Extract and score equipment level from additional_info - focus on reliable trim levels only."""
+        additional_info = car_data.get('additional_info', '').lower()
+        
+        # Equipment level scoring - ONLY reliable trim levels (most important factor)
+        equipment_score = 0
+        equipment_level = "Unknown"
+        
+        # Trim levels - these are consistently mentioned and reliable
+        # Correct hierarchy: Life (cheapest) → Active → Style → Executive (most expensive)
+        if 'executive' in additional_info:
+            equipment_score = 10
+            equipment_level = "Executive"
+        elif 'style' in additional_info:
+            equipment_score = 8
+            equipment_level = "Style"
+        elif 'active' in additional_info:
+            equipment_score = 5
+            equipment_level = "Active"
+        elif 'life' in additional_info:
+            equipment_score = 3
+            equipment_level = "Life"
+        else:
+            equipment_score = 1
+            equipment_level = "Unknown"
+        
+        # Small bonus for clear quality indicators (only obvious ones)
+        if any(x in additional_info for x in ['1 eier', '1eier']):
+            equipment_score += 1  # Single owner is always good
+        
+        if any(x in additional_info for x in ['norsk', 'eu ok', 'eu-ok']):
+            equipment_score += 1  # Norwegian car or valid EU approval
+        
+        # Grade equipment level based on trim only
+        if equipment_level == "Executive":
+            equipment_grade = 'A'
+            equipment_assessment = 'Executive - toppmodell med alt utstyr'
+        elif equipment_level == "Style":
+            equipment_grade = 'B'
+            equipment_assessment = 'Style - godt utstyrsnivå'
+        elif equipment_level == "Active":
+            equipment_grade = 'C'
+            equipment_assessment = 'Active - middels utstyr med sikkerhet/komfort'
+        elif equipment_level == "Life":
+            equipment_grade = 'D'
+            equipment_assessment = 'Life - grunnmodell'
+        else:
+            equipment_grade = 'F'
+            equipment_assessment = 'Ukjent utstyrsnivå'
+        
+        return {
+            'score': equipment_score,
+            'level': equipment_level,
+            'grade': equipment_grade,
+            'assessment': equipment_assessment
+        }
+    
     def analyze_car(self, car_data: Dict) -> Dict:
         """Simple car analysis - the only method you need."""
         
@@ -190,8 +247,11 @@ class SimpleCarAnalyzer:
         km_per_year = car_data.get('km_per_year', 15000)
         age_years = max(2024 - car_year, 0)
         
-        print(f"\n=== Analyserer: {car_name} ({car_year}) ===")
-        print(f"Pris: {current_price:,} kr, km/år: {km_per_year}, alder: {age_years} år")
+        # Analyze equipment level
+        equipment_analysis = self.extract_equipment_level(car_data)
+        
+        # print(f"\n=== Analyserer: {car_name} ({car_year}) ===")
+        # print(f"Pris: {current_price:,} kr, km/år: {km_per_year}, alder: {age_years} år")
         
         # Get original new car price
         try:
@@ -203,7 +263,7 @@ class SimpleCarAnalyzer:
         if not original_price or current_price == 0:
             return {'error': 'Mangler prisdata for analyse'}
         
-        print(f"Nybilpris: {original_price:,} kr")
+        # print(f"Nybilpris: {original_price:,} kr")
         
         # Calculate expected value
         try:
@@ -212,7 +272,7 @@ class SimpleCarAnalyzer:
             print(f"Feil ved beregning av forventet verdi: {e}")
             return {'error': f'Feil ved verdiberegning: {e}'}
         
-        print(f"Forventet verdi nå: {expected['expected_value']:,.0f} kr")
+        # print(f"Forventet verdi nå: {expected['expected_value']:,.0f} kr")
         
         # Compare actual vs expected
         actual_depreciation_amount = original_price - current_price
@@ -222,9 +282,9 @@ class SimpleCarAnalyzer:
         price_difference = current_price - expected['expected_value']
         depreciation_difference = actual_depreciation_percent - expected['total_depreciation_percent']
         
-        print(f"Faktisk verdifall: {actual_depreciation_percent:.1f}%")
-        print(f"Forventet verdifall: {expected['total_depreciation_percent']:.1f}%")
-        print(f"Forskjell: {depreciation_difference:+.1f}% ({'billigere' if depreciation_difference > 0 else 'dyrere'})")
+        # print(f"Faktisk verdifall: {actual_depreciation_percent:.1f}%")
+        # print(f"Forventet verdifall: {expected['total_depreciation_percent']:.1f}%")
+        # print(f"Forskjell: {depreciation_difference:+.1f}% ({'billigere' if depreciation_difference > 0 else 'dyrere'})")
         
         # PRIMARY: Mileage-based recommendation (most important for used cars)
         if km_per_year < 8000:
@@ -266,14 +326,35 @@ class SimpleCarAnalyzer:
             price_grade = 'F'
             price_assessment = 'Overpriset - mye dyrere enn forventet'
         
-        # MAIN GRADE = Mileage grade (this is what matters most)
+        # MAIN GRADE = Combination of mileage (primary), price (secondary), equipment (tie-breaker)
         grade = primary_grade
         
-        # Enhanced assessment combining both factors
+        # Equipment can adjust grade by ±1 level ONLY for clear trim differences
+        equipment_bonus = 0
+        if equipment_analysis['level'] == 'Executive' and primary_grade in ['A', 'B'] and price_grade in ['A', 'B', 'C']:
+            equipment_bonus = 1  # Executive can upgrade by one level if other factors are decent
+        elif equipment_analysis['level'] == 'Unknown':
+            equipment_bonus = -1  # Unknown equipment level gets penalty
+        
+        # Apply equipment bonus/penalty (but never worse than F or better than A)
+        grade_values = {'A': 5, 'B': 4, 'C': 3, 'D': 2, 'F': 1}
+        reverse_grades = {5: 'A', 4: 'B', 3: 'C', 2: 'D', 1: 'F'}
+        
+        current_grade_value = grade_values[grade]
+        adjusted_grade_value = max(1, min(5, current_grade_value + equipment_bonus))
+        grade = reverse_grades[adjusted_grade_value]
+        
+        # Enhanced assessment combining mileage, price, and equipment
         if primary_grade in ['A', 'B'] and price_grade in ['A', 'B']:
-            assessment = f"Topp kjøp - {mileage_assessment.lower()} OG {price_assessment.lower()}"
+            if equipment_analysis['grade'] in ['A', 'B']:
+                assessment = f"Topp kjøp - {mileage_assessment.lower()}, {price_assessment.lower()}, {equipment_analysis['level']} utstyr"
+            else:
+                assessment = f"Topp kjøp - {mileage_assessment.lower()} OG {price_assessment.lower()}"
         elif primary_grade in ['A', 'B']:
-            assessment = f"Anbefalt - {mileage_assessment.lower()} ({price_assessment.lower()})"
+            if equipment_analysis['grade'] in ['A', 'B']:
+                assessment = f"Anbefalt - {mileage_assessment.lower()}, {equipment_analysis['level']} utstyr ({price_assessment.lower()})"
+            else:
+                assessment = f"Anbefalt - {mileage_assessment.lower()} ({price_assessment.lower()})"
         elif primary_grade == 'C' and price_grade in ['A', 'B']:
             assessment = f"Vurder - {mileage_assessment.lower()} men {price_assessment.lower()}"
         elif primary_grade == 'C':
@@ -281,21 +362,33 @@ class SimpleCarAnalyzer:
         else:
             assessment = f"Frarådes - {mileage_assessment.lower()} ({price_assessment.lower()})"
         
-        # INTELLIGENT recommendation: combines mileage (primary) and price (secondary)
+        # INTELLIGENT recommendation: combines mileage (primary), price (secondary), equipment (tie-breaker)
         if primary_grade == 'A':  # Excellent mileage (under 12k km/år)
             if price_grade in ['A', 'B']:
-                recommendation = '🟢 ANBEFALT - Perfekt: lav kjørelengde og god pris'
+                if equipment_analysis['grade'] in ['A', 'B']:
+                    recommendation = f'🟢 ANBEFALT - Perfekt: lav km, god pris, {equipment_analysis["level"]} utstyr'
+                else:
+                    recommendation = '🟢 ANBEFALT - Perfekt: lav kjørelengde og god pris'
             elif price_grade == 'C':
-                recommendation = '🟢 ANBEFALT - Utmerket kjørelengde kompenserer for normal pris'
+                if equipment_analysis['grade'] == 'A':
+                    recommendation = f'🟢 ANBEFALT - Lav km + {equipment_analysis["level"]} utstyr kompenserer for normal pris'
+                else:
+                    recommendation = '🟢 ANBEFALT - Utmerket kjørelengde kompenserer for normal pris'
             elif price_grade == 'D':
                 recommendation = '🟡 VURDER - Utmerket kjørelengde men dyr pris'
             else:  # F
                 recommendation = '🟠 FORSIKTIG - Utmerket kjørelengde men overpriset'
         elif primary_grade == 'B':  # Good mileage (12-18k km/år)
             if price_grade in ['A', 'B']:
-                recommendation = '🟢 ANBEFALT - God kjørelengde og attraktiv pris'
+                if equipment_analysis['grade'] in ['A', 'B']:
+                    recommendation = f'🟢 ANBEFALT - God km, god pris, {equipment_analysis["level"]} utstyr'
+                else:
+                    recommendation = '🟢 ANBEFALT - God kjørelengde og attraktiv pris'
             elif price_grade == 'C':
-                recommendation = '🟢 ANBEFALT - God kombinasjon'
+                if equipment_analysis['grade'] == 'A':
+                    recommendation = f'🟢 ANBEFALT - {equipment_analysis["level"]} utstyr løfter denne bilen'
+                else:
+                    recommendation = '🟢 ANBEFALT - God kombinasjon'
             elif price_grade == 'D':
                 recommendation = '🟡 VURDER - God kjørelengde men dyr'
             else:  # F
@@ -318,10 +411,13 @@ class SimpleCarAnalyzer:
             else:
                 recommendation = '🔴 UNNGÅ - Svært høy kjørelengde og dårlig pris'
         
-        print(f"Priskarakter: {price_grade} - {price_assessment}")
-        print(f"Kjørelengde: {primary_grade} - {mileage_assessment}")
-        print(f"Totalkarakter: {grade} - {assessment}")
-        print(f"Anbefaling: {recommendation}")
+        # print(f"Priskarakter: {price_grade} - {price_assessment}")
+        # print(f"Kjørelengde: {primary_grade} - {mileage_assessment}")
+        # print(f"Totalkarakter: {grade} - {assessment}")
+        # print(f"Anbefaling: {recommendation}")
+        
+        # Extract equipment level and features
+        equipment_info = self.extract_equipment_level(car_data)
         
         return {
             'car_info': {
@@ -346,6 +442,7 @@ class SimpleCarAnalyzer:
                 'grade': primary_grade,
                 'assessment': mileage_assessment
             },
+            'equipment_analysis': equipment_analysis,  # Add equipment analysis
             'recommendation': recommendation,
             'summary': f"Totalkarakter {grade} - {assessment}",
             # Add top-level fields for convenience and backward compatibility

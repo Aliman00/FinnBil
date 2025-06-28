@@ -1,50 +1,77 @@
-import os
 import asyncio
 import json
-import re
+import os
 from typing import List, Dict, Optional
+
 from openai import OpenAI
-from services.simple_car_analyzer import car_analyzer
 from dotenv import load_dotenv
+
+from config.settings import settings
+from services.simple_car_analyzer import car_analyzer
+from utils.exceptions import AIServiceError, ConfigurationError
+from utils.logging import logger
 
 load_dotenv()
 
+
 class AIService:
-    """Simplified AI Service without MCP overhead."""
+    """AI Service for car analysis and recommendations."""
     
     def __init__(self):
-        self.model = os.getenv("AI_MODEL", "deepseek/deepseek-chat-v3-0324:free")
-        self.base_url = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
-        self.client = OpenAI(
-            base_url=self.base_url,
-            api_key=os.getenv("OPENROUTER_API_KEY")
-        )
-        # self.car_tools = CarTools()
-        # Use simple car analyzer
-        self.car_analyzer = car_analyzer
-        self.system_message = {
+        """Initialize AI service with configuration."""
+        try:
+            # Validate configuration
+            if not settings.ai.api_key:
+                raise ConfigurationError("OpenRouter API key is not configured")
+            
+            self.client = OpenAI(
+                base_url=settings.ai.base_url,
+                api_key=settings.ai.api_key
+            )
+            self.model = settings.ai.model
+            self.timeout = settings.ai.timeout
+            self.car_analyzer = car_analyzer
+            
+            # Initialize system message
+            self.system_message = self._create_system_message()
+            
+            logger.info(f"AI Service initialized with model: {self.model}")
+            
+        except Exception as e:
+            error_msg = f"Failed to initialize AI service: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            raise ConfigurationError(error_msg)
+    
+    def _create_system_message(self) -> Dict[str, str]:
+        """Create the system message for AI interactions."""
+        return {
             "role": "system",
             "content": (
                 "Du er en senior bilanalytiker og kjøpsrådgiver med 15+ års erfaring fra norsk bilbransje. "
                 "Du har tilgang til avansert verdifall-analyse basert på SmartePenger.no industristandarder og historiske RAV4 nybilpriser (2019-2024). "
                 "\nVIKTIG - BRUKTBILMARKED ANALYSE:"
                 "• Alle biler på Finn.no var opprinnelig kjøpt nye (bruk SmartePenger 'ny bil' verdifall)"
-                "• HØYERE verdifall enn forventet = BEDRE KJØP (bil er billigere enn den burde være)"
-                "• LAVERE verdifall enn forventet = DÅRLIGERE KJØP (bil er dyrere enn den burde være)"
-                "• Eksempel: 50% faktisk vs 40% forventet = +10% høyere verdifall = BILLIGERE = BRA"
-                "• Eksempel: 30% faktisk vs 40% forventet = -10% lavere verdifall = DYRERE = DÅRLIG"
+                "• HØYERE verdifall enn forventet = BEDRE KJØP (bilen har tapt MER verdi = BILLIGERE for deg)"
+                "• LAVERE verdifall enn forventet = DÅRLIGERE KJØP (bilen har tapt MINDRE verdi = DYRERE for deg)"
+                "• KRITISK: Hvis forskjellen er NEGATIV (-18.6%) = bilen har tapt MINDRE verdi = OVERPRISET"
+                "• KRITISK: Hvis forskjellen er POSITIV (+15.0%) = bilen har tapt MER verdi = UNDERPRISET"
+                "• Eksempel: 50% faktisk vs 40% forventet = +10% forskjell = bilen er BILLIGERE enn forventet = BRA KJØP"
+                "• Eksempel: 30% faktisk vs 40% forventet = -10% forskjell = bilen er DYRERE enn forventet = DÅRLIG KJØP"
                 "• LAVERE kilometerstand = BEDRE KJØP (mindre slitasje)"
                 "• HØYERE kilometerstand = DÅRLIGERE KJØP (mer slitasje)"
                 "• Forventet verdifall: 20% år 1, 14% år 2, 13% år 3, osv."
-                "• VIKTIG: Totalkarakter kombinerer pris (60%) og kjørelengde (40%)"
+                "• VIKTIG: Totalkarakter kombinerer pris (50%), kjørelengde (40%) og trim-nivå (10%)"
+                "• Trim-nivåer: Executive > Style > Active > Life (høyere nivå gir fordel ved like biler)"
+                "• Executive gir fordel ved tilsvarende pris/km, men dårlig pris/høy km veier tyngre"
                 "• Biler med F i kjørelengde (>25k km/år) kan MAKS få C totalkarakter"
                 "• Biler med D i kjørelengde (20-25k km/år) kan MAKS få B totalkarakter"
                 "• Kun biler med A-C kjørelengde kan få A totalkarakter"
                 "\nDin specialitet:"
                 "• Analysere bruktbilmarkedet med SmartePenger 'ny bil' verdifallsmodell (alle biler startet som nye)"
-                "• Finne underprisede biler: Høyere verdifall enn SmartePenger-forventet (20% år 1, 14% år 2, osv.)"
+                "• Finne underprisede biler: Biler hvor faktisk verdifall er HØYERE enn SmartePenger-forventet"
+                "• EKSEMPEL UNDERPRISET: 55% faktisk vs 47% forventet = +8% forskjell = BILLIGERE = ANBEFAL"
+                "• EKSEMPEL OVERPRISET: 35% faktisk vs 47% forventet = -12% forskjell = DYRERE = UNNGÅ"
                 "• Prioritere lav kilometerstand: Under 11k km/år = Utmerket, 11-15k = Bra, 15-20k = Greit, over 20k = Dårlig"
-                "• Karaktersetting (A-F) der totalkarakter vekter pris (60%) og kjørelengde (40%)"
                 "• A-karakter kun for biler med både god pris OG akseptabel kjørelengde"
                 "• Ekstrem kjørelengde (>25k km/år) begrenser totalkarakter til maks C"
                 "• Identifisere overprisede biler (lavere verdifall enn forventet) vs underprisede (høyere verdifall)"
@@ -76,16 +103,17 @@ class AIService:
                 mileage = analysis['mileage_analysis']
                 
                 enhanced_analysis += f"""
-                🚗 {car['name']} ({car['year']}) - Totalkarakter: {analysis['grade']} (Pris: {price['grade']}, Km: {mileage['grade']})
+                🚗 {car['name']} ({car['year']}) - Totalkarakter: {analysis['grade']} (Pris: {price['grade']}, Km: {mileage['grade']}, Utstyr: {analysis['equipment_analysis']['grade']})
                 • Markedspris: {car['current_price']:,} kr
                 • Nybilpris: {price['original_price']:,} kr
                 • Faktisk verdifall: {price['actual_depreciation_percent']:.1f}%
                 • Forventet verdifall: {price['expected_depreciation_percent']:.1f}%
                 • Verdifallssammenligning: {price['depreciation_difference']:+.1f}% ({'BILLIGERE enn forventet (bra for kjøper)' if price['depreciation_difference'] > 0 else 'DYRERE enn forventet (dårlig for kjøper)'})
                 • Kjørelengde: {car['km_per_year']:,} km/år ({mileage['assessment']})
+                • Utstyrsnivå: {analysis['equipment_analysis']['level']} ({analysis['equipment_analysis']['assessment']})
                 • Anbefaling: {analysis['recommendation']}
                 """
-        
+
         base_prompt = f"""Du er en senior bilanalytiker med 15+ års erfaring fra bilbransjen. Analyser disse RAV4-ene som en profesjonell kjøpsrådgiver.
 
             STRUKTURERTE BILDATA:
@@ -101,13 +129,24 @@ class AIService:
             ## 🎯 TOPP 5 KJØPSANBEFALINGER
 
             Ranger de 5 BESTE bilene basert på SmartePenger verdifallsanalyse. HUSK: Høyere faktisk verdifall enn forventet = billigere bil = bedre kjøp!
+            
+            **PRIORITERING (viktigst først):**
+            1. **Kjørelengde** (40%) - Lav km/år er viktigst for langsiktig verdi
+            2. **Pris/verdifall** (50%) - Sammenlign med forventet markedsverdi  
+            3. **Trim-nivå** (10%) - Executive > Style > Active > Life som faktisk nevnes i annonsen
+            
+            **VED TETT KONKURRANSE:** Hvis to biler har lik pris og kilometerstand, velg Executive over Active over Life basert på det som faktisk står i annonsen.
+            
+            Du skal gi KONKRETE grunner til hvorfor hver bil er et godt kjøp, basert på verdifall og kilometerstand og du skal se dette som en mulighet til å gi kjøpsråd til potensielle kjøpere.
+            DU SKAL gi det absolutte beste rådet for hver bil, om du er usikker på hva som er best, så skal du gi det beste rådet du kan basert på de dataene du har og gjerne tenke deg om 2-3 ganger før du gir rådet.
 
             **[RANG #X] - [Bilnavn og år] - Karakter: [A-F] - Pris: [] - Kilometerstand: [] - ID: []**
             - 💰 **Pris vs. industri**: [Sammenlign med SmartePenger forventet verdifall]
             - 📉 **Kjøpsanalyse**: [VIKTIG: Hvis faktisk verdifall > forventet = billigere = bra. Hvis faktisk < forventet = dyrere = dårlig]
             - 🚗 **Kilometerstand**: [Under 11k km/år = Utmerket, 11-15k = Bra, 15-20k = Greit, over 20k = Dårlig]
-            - ⚡ **Kjøpsargument**: [Hovedgrunnen til å kjøpe DENNE bilen]
-            - ⚠️ **Risikofaktorer**: [Potensielle problemer/bekymringer]
+            - 🎛️ **Trim-nivå**: [Executive/Style/Active/Life - hvor Executive er toppmodell og Life grunnmodell]
+            - ⚡ **Kjøpsargument**: [Ved like pris/km - fremhev trim-nivå som avgjørende faktor, Executive > Style > Active > Life]
+            - ⚠️ **Risikofaktorer**: [Potensielle problemer/bekymringer. Utdyp hva er det som en potensiell kjøper bør være oppmerksom på]
             - 🔗 **URL**: [Finn.no lenke]
             - 🏆 **Kjøpsanbefaling**: [Basert på SmartePenger-analyse fra kjøpers perspektiv]
 

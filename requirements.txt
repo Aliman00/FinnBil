@@ -18,5 +18,7 @@ python-dotenv>=1.0.0
 # MCP (Model Context Protocol) - for webscraper
 mcp>=0.1.0
 
-# Additional utilities
-typing-extensions>=4.0.0
+# Development and testing (optional)
+pytest>=7.0.0
+black>=23.0.0
+flake8>=6.0.0
